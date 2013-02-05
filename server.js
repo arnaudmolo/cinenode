@@ -6,6 +6,10 @@ var _ = require('lodash/lodash.underscore'),
 // Creation du serveur
 var server = http.createServer();
 
+var io = require('socket.io');
+
+// Socket io ecoute maintenant notre serverlication !
+io = io.listen(server);
 // Variables globales
 // Ces variables resteront durant toute la vie du seveur pour et sont commune pour chaque client (node server.js)
 // liste des messages de la forme { pseudo : 'Mon pseudo', message : 'Mon message' }
@@ -44,7 +48,8 @@ app.User = Backbone.Model.extend({
     initialize: function(){
         this.save({
             _id: _.uniqueId()
-        })
+        });
+        
     },
     toggle: function() {
         this.save({
@@ -74,14 +79,8 @@ app.Show = Backbone.Model.extend({
 });
 var UserList = Backbone.Collection.extend({
     model: app.User,
-    nextOrder: function() {
-        if ( !this.length ) {
-            return 1;
-        }
-        return this.last().get('order') + 1;
-    },
-    comparator: function( user ) {
-        return user.get('order');
+    defaults: {
+        room: '';
     },
     sendAllUsers: function(){
         var all = [];
@@ -99,7 +98,11 @@ var UserList = Backbone.Collection.extend({
         return true;
     }
 });
-app.Users = new UserList();
+// app.Users = new UserList();
+
+app.Aventure = new UserList({'aventure'});
+app.Scifi = new UserList({'scifi'});
+app.Comic = new UserList({'comic'});
 
 var ShowList = Backbone.Collection.extend({
     model: app.Show,
@@ -117,17 +120,24 @@ app.Shows = new ShowList();
 
 //// SOCKET.IO ////
 
-var io = require('socket.io');
-
-// Socket io ecoute maintenant notre serverlication !
-io = io.listen(server);
-
 // Quand une personne se connecte au serveur
 
 io.sockets.on('connection', function (socket) {
     var me = false;
     socket.on('addUser', function(user){
         if (app.Users.search(user.name)) {
+            switch (user.room){
+                case 'aventure':
+                me = app.Aventure.create(user);
+                break;
+                case 'scifi':
+                me = app.scifi.create(user);
+                break;
+                case 'comic':
+                me = app.comic.create(user);
+                break;
+            }
+            socket.join(me.get('room'));
             me = app.Users.create(user);
             socket.emit('sendUsers', app.Users.sendAllUsers());
             socket.broadcast.emit('newUser', me);
