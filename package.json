@@ -1,0 +1,21 @@
+{
+  "name": "cinenode",
+  "version": "0.0.0",
+  "description": "Serveur node pour cinechat",
+  "main": "server.js",
+  "dependencies": {
+    "backbone": "~0.9.10",
+    "mongodb": "~1.2.11",
+    "request": "~2.12.0",
+    "underscore": "~1.4.4",
+    "socket.io": "~0.9.13"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "servertest.js",
+    "start": "node server.js"
+  },
+  "repository": "",
+  "author": "arnaud pichon",
+  "license": "BSD"
+}
