@@ -1,6 +1,6 @@
 {
   "name": "cinenode",
-  "version": "0.0.0",
+  "version": "0.0.5",
   "description": "Serveur node pour cinechat",
   "main": "server.js",
   "dependencies": {
@@ -15,7 +15,14 @@
     "test": "servertest.js",
     "start": "node server.js"
   },
-  "repository": "",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/onesime/cinenode.git"
+  },
   "author": "arnaud pichon",
-  "license": "BSD"
+  "license": "BSD",
+  "gitHead": "e482a1ae40c087ea5887e635f1980e60cd0ae49f",
+  "keywords": [
+    "cinenode"
+  ]
 }
