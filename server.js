@@ -1,22 +1,15 @@
 var http    =   require('http');
-var fs      =   require('fs');
-var url     =   require('url');
-var _ = require('lodash/lodash.underscore'),
+var _ = require('lodash/lodash'),
     Backbone = require('backbone');
-// Creation du serveur
 var request = require('request');
 var server = http.createServer();
 
 var io = require('socket.io');
 
-// Socket io ecoute maintenant notre serverlication !
 io = io.listen(server, {log: false});
-// Variables globales
-// Ces variables resteront durant toute la vie du seveur pour et sont commune pour chaque client (node server.js)
-// liste des messages de la forme { pseudo : 'Mon pseudo', message : 'Mon message' }
 //// Application Backbone ////
 
-Backbone.sync = function(method, model, options){ // Réécrire le backbone.sync parceque c'est la hess
+Backbone.sync = function(method, model, options){ // Réécrire le backbone.sync car aucune sync n'est nécéssaire
     options || (options = {});
     switch (method) {
         case 'create':
@@ -36,11 +29,12 @@ Backbone.sync = function(method, model, options){ // Réécrire le backbone.sync
         break;
     }
 };
-
 var app = {};
+
+// Déclaration du model utilisateur #user
 app.User = Backbone.Model.extend({
     defaults: {
-        _id: _.uniqueId(),
+        _id: '',
         name: 'User',
         points: 0,
         room: '',
@@ -51,22 +45,21 @@ app.User = Backbone.Model.extend({
         completed: false,
     },
     idAttribute: '_id',
-    initialize: function(){this.save({_id: _.uniqueId()})},
+    initialize: function(){this.save({_id: _.uniqueId()})},     //Génère un ID unique pour chaque utilisateur
     toggle: function() {this.save({completed: !this.get('completed')})},
-    addPoints: function(p){
-        p.points = this.get('points') + p.points;
-        this.save(p);
+    addPoints: function(p){                     // Ajoute des points
+        this.save({points: this.get('points') + p.points });
     },
     setTitle:function(nb){
-        this.set('classementTitle', nb);
+        this.set('classementTitle', nb);        // Permet de mettre a jour le classement de l'utilisateur sur le title
     },
     setDirector:function(nb){
-        this.get('classementDirector', nb);
+        this.set('classementDirector', nb);     // Permet de mettre a jour le classement de l'utilisateur sur les réalisateurs
     },
     setActors:function(nb){
-        this.get('classementActors', nb);
+        this.set('classementActors', nb);       // Permet de mettre a jour le classement de l'utilisateur sur les acteurs
     },
-    contact: function(response){
+    contact: function(response){                // Envoi la réponse a l'utilisateur coté client
         if (response.message.title.r || response.message.director.r || response.message.actors.r) {
             this.addPoints({
                 points: response.points, classement: {
@@ -79,55 +72,82 @@ app.User = Backbone.Model.extend({
         };
         this.get('socket').emit('responseSubmit', response);
     },
-    auth: function(){return true;},
+    auth: function(){return true;},             // Vérifie l'authentification
     clean: function(){
-        return {_id: this.id, name: this.attributes.name, points: this.get('points'), room: this.attributes.room};
+        return {_id: this.id, name: this.attributes.name, points: this.get('points'), room: this.attributes.room}; //Retourne l'utilisateur sans ses données sensibles
     },
-    disconnect: function(){
+    disconnect: function(){                     // Déconnecte l'utilisateur
         this.socket.in(this.room).emit('disconnect', this.clean());
+    },
+    reset: function(){                          // Remet les classements de l'utilisateur à 0
+        this.set('classementTitle', 0);
+        this.set('classementDirector', 0);
+        this.set('classementActors', 0);
     }
 });
+
+// Déclaration du model Show #Show
 app.Show = Backbone.Model.extend({
     defaults: {
-        title: 'Show',
+        title: {
+            vf:String,
+            vo:String,
+        },
         actors: [],
-        director: String,
+        director: [],
+        videos: [],
         classementTitle: 0,
         classementDirector: 0,
         classementActors: 0,
     },
-    incrementTitle:function(){
+    incrementTitle:function(){                  // Chiffre le nombre de personnes ayant répondu au titre
         this.set('classementTitle', this.get('classementTitle') + 1);
     },
-    incrementDirector:function(){
+    incrementDirector:function(){               // Chiffre le nombre de personnes ayant répondu aux réals
         this.set('classementDirector', this.get('classementDirector') + 1);
     },
-    incrementActors:function(){
+    incrementActors:function(){                 // Chiffre le nombre de personnes ayant répondu aux acteurs
         this.set('classementActors', this.get('classementActors') + 1);
     },
+    chooseVideo: function(){                    // Renvoi un des extraits contenu dans Video 
+        console.log(this.get('videos').length);
+        return this.get('videos')[Math.floor(Math.random()*this.get('videos').length)];
+    }
 });
+
+// Déclaration de la collection contenant les utilisateurs #userList
 var UserList = Backbone.Collection.extend({
     model: app.User,
-    sendAllUsers: function(){
+    sendAllUsers: function(){                   //Renvoi tout les utilisateurs de manière a pourvoir les renvoyer a l'app sans données sensibles
         var d = [];
         _.each(this.models, function(model){
             d.push(model.clean());
         });
         return d;
     },
+    reset: function(){                          // Reset tout les utilisateurs
+        _.each(this.models, function(user){
+            user.reset();
+        });
+    }
 });
+
+// Déclaration de la collection contenant les show #showList
 var ShowList = Backbone.Collection.extend({
     model: app.Show,
     defaults: {
         type: String,
     },
-    initialize: function(){
+    initialize: function(e){
+        console.log('http://127.0.0.1/Cinequizz/movies/category/'+e);
         var model = this;
-        request({
+        console.log(this);
+        request({                   // Get la page dédiée a cette application
             method: 'GET',
-            uri: 'http://127.0.0.1/Cinequizz/api',
+            uri: 'http://127.0.0.1/Cinequizz/movies/category/aventure',
             multipart:[{
                     'content-type': 'application/json',
+                    'charset': 'utf-8',
                     body: JSON.stringify({
                         foo: 'bar',
                         _attachments: {'message.txt':
@@ -142,58 +162,93 @@ var ShowList = Backbone.Collection.extend({
                 {body: 'I am an attachment'}
             ]
         },
-        function(error, response, body){
+        function(error, response, body){        // Quand la réponse du get arrive
+            var show = {};
             var shows = JSON.parse(body);
-            _.each(shows, function(show){
+            _.each(shows, function(showJson){
+                var actors = Array();
+                var directors = Array();
+                var videos = Array();
+                show.title = showJson.title;
+                _.each(showJson.actors, function(actor){
+                    actors.push(actor.name);
+                });
+                _.each(showJson.directors, function(director){
+                    directors.push(director.name);
+                });
+                _.each(showJson.extracts, function(video){
+                    videos.push(video.href);
+                })
+                show.actors = actors;
+                show.director = directors;
+                show.videos = videos;
                 model.create(show);
             });
         });
     },
-    getNextShow: function(){
-        return this.shift();
-    }
+    getNextShow: function(){return this.shift();}   // Retourne le prochain show de la collection et le supprime
 });
+
+// Déclaration du model correspondant aux différentes chambres dans lesquels défient les utilisateurs #room
 app.Room = Backbone.Model.extend({
     defaults: {
         name: String,
-        users: new UserList(),
-        shows: new ShowList(),
-        show: '',
+        users: {},      // Une room contient des utilisateurs
+        shows: {},      // Une room contient différents films
+        show: false,                // Défini le show qui est actuellement sujette au quizz
     },
-    start: function(socket){
-        if (_.size(this.attributes.users.models)<=1) {
-            this.attributes.show = this.attributes.shows.getNextShow();
-            // setTimeout(function(model){
-            //     model.attributes.show = model.attributes.shows.getNextShow();
-            //     console.log(model.attributes.show);
-            // }, 4000, this);
+    reboot: function(){             // Redémare la room
+        io.sockets.in(this.get('room')).emit('disconnect')  // Kick les utilisateurs
+        this.set('shows', new ShowList(this.get('id')))     // Régénère les show contenus dans la room
+        this.set('show', false)     // Supprime show quizzé
+    },
+    start: function(){              // Initialise le jeu
+        if (!this.get('show')) {    // Si le show ne contient rien [CAD = room pas encore initialisée]
+            model = this;           // Pointeur pour le setTimeout
+            setTimeout(function(){  // Attendre 2 secondes pout lancer le premier show
+                console.log('TIMEOUT BEBE')
+                model.nextShow()    // Lance la partie
+            }, 2000);
         };
     },
-    reboot: function(){
-        _.each(this.attributes.users.models, function(user){
-            user.disconnect();
-        });
-        this.attributes.shows = new ShowList();
+    nextShow: function(){
+        var next = this.get('shows').getNextShow() //   Récupère le prochain show de la showList
+        console.log(this.get('shows').models)
+        if (next) {                 // Si il reste un show a quizzer
+            var model = this;       // Pointeur pour setTimeout
+            console.log("ici", next)    // Affiche le prochain show pour le débuggage
+            this.get('users').reset()   // Reset les classements des utilisateurs pour leur permettre de rejouer
+            io.sockets.in(this.get('room')).emit('nextShow', {show: this.get('show'), url: next.chooseVideo()}) // Envoi le show qui va se terminer pour l'afficher sur le client et l'url du prochain extrait 
+            this.set('show', next) // Change le show par le prochain
+            setTimeout(function(){ // Attendre 20 secondes
+                model.nextShow()   // Et tout recommencer
+            }, 20000)
+        }else{                     // Si pas de show, on reboot
+            console.log('nomore')
+            this.reboot()
+        }
     }
 });
+// Déclaration de la collection contenant les rooms #roomList
 var RoomList = Backbone.Collection.extend({
     model: app.Room,
     initialize: function(){
-        this.create({id: 'aventure', users: new UserList(), shows: new ShowList()});
-        this.create({id: 'scifi', users: new UserList(), shows: new ShowList()});
-        this.create({id: 'comic', users: new UserList(), shows: new ShowList()});
+        this.create({id: 'aventure', users: new UserList(), shows: new ShowList('aventure')}) // Crée la room Aventure
+        // this.create({id: 'comédie', users: new UserList(), shows: new ShowList('comédie')}) // Crée la room Aventure
+        // this.create({id: 'drame', users: new UserList(), shows: new ShowList('drame')}) // Crée la room Aventure
+        // this.create({id: 'thriller', users: new UserList(), shows: new ShowList('thriller')}) // Crée la room Aventure
     },
 });
 
-// Déclarer les room que l'ont va utiliser
-app.Rooms = new RoomList();
-// Quand une personne se connecte au serveur
+app.Rooms = new RoomList() // Initialise la liste des rooms
 
+// Quand une personne se connecte au serveur
 io.sockets.on('connection', function (socket) {
-    var room;
-    var roomUsersList;
-    var roomShowsList;
-    var me = false;
+    var room,
+        roomUsersList,
+        roomShowsList,
+        me = false;
+
     socket.on('addUser', function(user){
         user.socket = socket;
         switch (user.room){
@@ -216,74 +271,44 @@ io.sockets.on('connection', function (socket) {
                 roomShowsList = room.get('shows');
             break;
         };
+        room.start();
         myRoom = me.get('room');
-        room.start(socket);
         socket.join(myRoom);
         socket.in(myRoom).emit('sendShows', roomShowsList);
         socket.in(myRoom).emit('sendUsers', roomUsersList.sendAllUsers());
         socket.broadcast.in(myRoom).emit('newUser', me.clean());
         socket.in(myRoom).emit('error', me.clean());
     });
+    socket.on('next', function(){room.nextShow()});
     socket.on('submit', function(prop){
-        var response = {
-            message:{
-                title:{
-                    r:false
-                },
-                actors: {
-                    r:false
-                },
-                director:{
-                    r:false
-                }
-            },
-            classement:{
-                title:0,
-                actors: 0,
-                director:0
-            }
-        };
-        if (levenshtein(room.get('show').get('title'), prop)<=2) { // Si la proposition du joueur est proche du titre du film
-            if (roomUsersList.get(me.get('_id')).get('classementTitle')==0) {  // Si l'utilisateur a déjà répondu a titre
-                response.points = 5;
-                if (room.get('show').get('classementTitle') <= 0) { // Si l'utilisateur est le premier a répondre au titre
-                    response.points = response.points + 3;
+        var response = {message:{title:{r:false},actors: {r:false},director:{r:false}},classement:{title:0,actors: 0,director:0}};
+
+        app.compare = function(category, prop, bonus){
+            var upperCat = capitaliseFirstLetter(category);
+                _.each(room.get('show').get(category), function(string){
+                if (levenshtein(string, prop)<=string.length/2) {    // Si la proposition du joueur est proche du titre du film
+                    if (me.get('classement'+upperCat)==0) { // Si l'utilisateur n'as pas déjà répondu 
+                        response.points = 5;
+                        if (room.get('show').get('classement' + upperCat)<=0) { // Si l'utilisateur est le premier a répondre au titre
+                            response.points = response.points + bonus;
+                        };
+                        room.get('show')['increment' + upperCat]();
+
+                        me['set'+upperCat](room.get('show').get('classement'+upperCat));
+                        response.classement[category] = room.get('show').get('classement'+upperCat);
+                        response.message[category].r = true;
+                        response.message[category].text = 'Tu as répondu en ' + response.classement[category];
+                    }else{
+                        response.message[category].r = false;
+                        response.message[category].text = 'Déja repondu';
+                    };
                 };
-                room.get('show').incrementTitle();
-                roomUsersList.get(me.get('_id')).setTitle(room.get('show').get('classementTitle'));
-
-                response.classement.title = room.get('show').get('classementTitle');
-                response.message.title.r = true;
-                response.message.title.text = 'Tu as répondu en ' + response.classement.title;
-            }else{
-                response.message.title.r = false;
-                response.message.title.text = "deja rep";
-            };
-        }else{
-            response.message.title.r = false;
+            });
         };
-
-        if (levenshtein(room.get('show').get('director'), prop)<=2) { // Si la proposition du joueur est proche du titre du film
-            if (roomUsersList.get(me.get('_id')).get('classementDirector')==0) {  //Si l'utilisateur a déjà répondu a titre
-                response.points = 5;
-                if (room.get('show').get('classementDirector') <= 0) { // Si l'utilisateur est le premier a répondre au titre
-                    response.points = response.points + 5;
-                };
-
-                room.get('show').incrementDirector();
-                roomUsersList.get(me.get('_id')).setDirector(room.get('show').get('classementDirector'));
-
-                response.classement.director = room.get('show').get('classementDirector');
-                response.message.director.r = true;
-                response.message.director.text = 'Tu as répondu en ' + response.classement.director;
-            }else{
-                response.message.director.r = false;
-                response.message.director.text = "deja rep";
-            };
-        }else{
-            response.message.director.r = false;
-        };
-        roomUsersList.get(me.get('_id')).contact(response);
+        app.compare('title', prop, 3);
+        app.compare('director', prop, 2);
+        app.compare('actors', prop, 2)
+        me.contact(response);
     });
     socket.on('disconnect', function () {
         socket.broadcast.emit('disconnectUser', me.id);
@@ -294,61 +319,34 @@ io.sockets.on('connection', function (socket) {
 server.listen(8080);
 console.log('Live Chat server running at http://localhost:8080/');
 
-//based on: http://en.wikibooks.org/wiki/Algorithm_implementation/Strings/Levenshtein_distance
-//and:  http://en.wikipedia.org/wiki/Damerau%E2%80%93Levenshtein_distance
-function levenshtein( a, b ){
-    var i;
-    var j;
-    var cost;
-    var d = new Array();
- 
-    if ( a.length == 0 )
-    {
-        return b.length;
+function capitaliseFirstLetter(string){
+    return string.charAt(0).toUpperCase() + string.slice(1);
+}
+
+function levenshtein(a, b){
+    var i, j, cost, d = new Array(); 
+    if(a.length==0){return b.length}
+    if(b.length==0 ){return a.length}
+    for(i=0;i<=a.length;i++){
+        d[i]=new Array();
+        d[i][0]=i;
     }
- 
-    if ( b.length == 0 )
-    {
-        return a.length;
-    }
- 
-    for ( i = 0; i <= a.length; i++ )
-    {
-        d[ i ] = new Array();
-        d[ i ][ 0 ] = i;
-    }
- 
-    for ( j = 0; j <= b.length; j++ )
-    {
-        d[ 0 ][ j ] = j;
-    }
- 
-    for ( i = 1; i <= a.length; i++ )
-    {
-        for ( j = 1; j <= b.length; j++ )
-        {
-            if ( a.charAt( i - 1 ) == b.charAt( j - 1 ) )
-            {
-                cost = 0;
-            }
-            else
-            {
-                cost = 1;
-            }
- 
-            d[ i ][ j ] = Math.min( d[ i - 1 ][ j ] + 1, d[ i ][ j - 1 ] + 1, d[ i - 1 ][ j - 1 ] + cost );
-            
+    for( j = 0 ; j <= b.length ; j++ ){ d[0][j] = j; }
+    for( i = 1 ; i <= a.length ; i++ ){
+        for ( j = 1; j <= b.length ; j++ ){
+            if ( a.charAt(i-1) == b.charAt(j-1)){cost = 0;}
+            else{cost = 1;} 
+            d[i][j] = Math.min( d[i-1][j] + 1, d[i][j-1]+1, d[i-1][j-1] + cost );            
             if(
-         i > 1 && 
-         j > 1 &&  
-         a.charAt(i - 1) == b.charAt(j-2) && 
-         a.charAt(i-2) == b.charAt(j-1)
-         ){
-          d[i][j] = Math.min(
-            d[i][j],
-            d[i - 2][j - 2] + cost
-          )
-         
+                i > 1 &&
+                j > 1 &&  
+                a.charAt(i - 1) == b.charAt(j-2) && 
+                a.charAt(i-2) == b.charAt(j-1)
+            ){
+                d[i][j] = Math.min(
+                    d[i][j],
+                    d[i - 2][j - 2] + cost
+                )
             }
         }
     }
