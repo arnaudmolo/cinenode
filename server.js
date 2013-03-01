@@ -1,12 +1,16 @@
-var http    =   require('http');
-var _ = require('lodash/lodash'),
-    Backbone = require('backbone');
-var request = require('request');
-var server = http.createServer();
+var http    =   require('http'),
+    _ = require('lodash/lodash'),
+    express = require('express'),
+    Backbone = require('backbone'),
+    request = require('request'),
+    server = express.createServer();
 
 var io = require('socket.io');
 
 io = io.listen(server, {log: false});
+
+var listCategory = ['aventure', 'drame', 'comédie', 'thriller'];
+
 //// Application Backbone ////
 
 Backbone.sync = function(method, model, options){ // Réécrire le backbone.sync car aucune sync n'est nécéssaire
@@ -49,6 +53,9 @@ app.User = Backbone.Model.extend({
     toggle: function() {this.save({completed: !this.get('completed')})},
     addPoints: function(p){                     // Ajoute des points
         this.save({points: this.get('points') + p.points });
+    },
+    getName: function(){                        // Retourne le nom de l'utilisateur
+        return this.get('name');
     },
     setTitle:function(nb){
         this.set('classementTitle', nb);        // Permet de mettre a jour le classement de l'utilisateur sur le title
@@ -110,8 +117,11 @@ app.Show = Backbone.Model.extend({
         this.set('classementActors', this.get('classementActors') + 1);
     },
     chooseVideo: function(){                    // Renvoi un des extraits contenu dans Video 
-        console.log(this.get('videos').length);
-        return this.get('videos')[Math.floor(Math.random()*this.get('videos').length)];
+        var d = this.get('videos')[Math.floor(Math.random()*this.get('videos').length)];
+        if (d) {
+            return d
+        };
+        return 'http://h.fr.mediaplayer.allocine.fr/nmedia/18/82/69/35/19244272_ex2_m_004.mp4';
     }
 });
 
@@ -129,6 +139,13 @@ var UserList = Backbone.Collection.extend({
         _.each(this.models, function(user){
             user.reset();
         });
+    },
+    getName: function(e){                       // Renvoi true si le nom est présent dans l'userlist
+        var d = [];
+        _.each(this.models, function(user){
+            d.push(user.getName())
+        })
+        return _.contains(d, e);
     }
 });
 
@@ -138,13 +155,11 @@ var ShowList = Backbone.Collection.extend({
     defaults: {
         type: String,
     },
-    initialize: function(e){
-        console.log('http://127.0.0.1/Cinequizz/movies/category/'+e);
+    initialize: function(e, a){
         var model = this;
-        console.log(this);
         request({                   // Get la page dédiée a cette application
             method: 'GET',
-            uri: 'http://127.0.0.1/Cinequizz/movies/category/aventure',
+            uri: 'http://127.0.0.1/Cinequizz/movies/category/'+a.cat,
             multipart:[{
                     'content-type': 'application/json',
                     'charset': 'utf-8',
@@ -186,7 +201,9 @@ var ShowList = Backbone.Collection.extend({
             });
         });
     },
-    getNextShow: function(){return this.shift();}   // Retourne le prochain show de la collection et le supprime
+    getNextShow: function(){ // Retourne le prochain show de la collection et le supprime
+        return this.shift();
+    }   
 });
 
 // Déclaration du model correspondant aux différentes chambres dans lesquels défient les utilisateurs #room
@@ -199,26 +216,26 @@ app.Room = Backbone.Model.extend({
     },
     reboot: function(){             // Redémare la room
         io.sockets.in(this.get('room')).emit('disconnect')  // Kick les utilisateurs
-        this.set('shows', new ShowList(this.get('id')))     // Régénère les show contenus dans la room
+        this.set('shows', new ShowList('', {cat:this.get('id')}))     // Régénère les show contenus dans la room
         this.set('show', false)     // Supprime show quizzé
     },
     start: function(){              // Initialise le jeu
         if (!this.get('show')) {    // Si le show ne contient rien [CAD = room pas encore initialisée]
             model = this;           // Pointeur pour le setTimeout
             setTimeout(function(){  // Attendre 2 secondes pout lancer le premier show
-                console.log('TIMEOUT BEBE')
                 model.nextShow()    // Lance la partie
             }, 2000);
         };
     },
     nextShow: function(){
         var next = this.get('shows').getNextShow() //   Récupère le prochain show de la showList
-        console.log(this.get('shows').models)
+        var actual = this.get('show');
+        console.log(next);
         if (next) {                 // Si il reste un show a quizzer
             var model = this;       // Pointeur pour setTimeout
-            console.log("ici", next)    // Affiche le prochain show pour le débuggage
             this.get('users').reset()   // Reset les classements des utilisateurs pour leur permettre de rejouer
-            io.sockets.in(this.get('room')).emit('nextShow', {show: this.get('show'), url: next.chooseVideo()}) // Envoi le show qui va se terminer pour l'afficher sur le client et l'url du prochain extrait 
+            io.sockets.in(this.get('id')).emit('nextShow', {show: actual, url: next.chooseVideo()}) // Envoi le show qui va se terminer pour l'afficher sur le client et l'url du prochain extrait 
+            console.log(this.get('id'));
             this.set('show', next) // Change le show par le prochain
             setTimeout(function(){ // Attendre 20 secondes
                 model.nextShow()   // Et tout recommencer
@@ -233,10 +250,15 @@ app.Room = Backbone.Model.extend({
 var RoomList = Backbone.Collection.extend({
     model: app.Room,
     initialize: function(){
-        this.create({id: 'aventure', users: new UserList(), shows: new ShowList('aventure')}) // Crée la room Aventure
-        // this.create({id: 'comédie', users: new UserList(), shows: new ShowList('comédie')}) // Crée la room Aventure
-        // this.create({id: 'drame', users: new UserList(), shows: new ShowList('drame')}) // Crée la room Aventure
-        // this.create({id: 'thriller', users: new UserList(), shows: new ShowList('thriller')}) // Crée la room Aventure
+        r = this;
+        _.each(listCategory, function(a){
+            setTimeout(function(){
+                console.log('Dans le for ', r.create({id: a, users: new UserList(), shows: new ShowList('', {cat: a})})); // Crée la room Aventure
+            }, 500);
+            console.log(a);
+        });
+        // this.create({id: 'comédie', users: new UserList(), shows: new ShowList('', {cat: 'comédie'})}) // Crée la room Commédie
+        // this.create({id: 'thriller', users: new UserList(), shows: new ShowList('', {cat: 'thriller'})}) // Crée la room Thriller
     },
 });
 
@@ -247,82 +269,84 @@ io.sockets.on('connection', function (socket) {
     var room,
         roomUsersList,
         roomShowsList,
+        d,
         me = false;
 
     socket.on('addUser', function(user){
         user.socket = socket;
-        switch (user.room){
-            case 'aventure':
-                room = app.Rooms.get('aventure');
-                roomUsersList = room.get('users');
-                me = roomUsersList.create(user);
-                roomShowsList = room.get('shows');
-            break;
-            case 'scifi':
-                room = app.Rooms.get('scifi');
-                roomUsersList = room.get('users');
-                me = roomUsersList.create(user);
-                roomShowsList = room.get('shows');
-            break;
-            case 'comic':
-                room = app.Rooms.get('comic');
-                roomUsersList = room.get('users');
-                me = roomUsersList.create(user);
-                roomShowsList = room.get('shows');
-            break;
-        };
-        room.start();
-        myRoom = me.get('room');
-        socket.join(myRoom);
-        socket.in(myRoom).emit('sendShows', roomShowsList);
-        socket.in(myRoom).emit('sendUsers', roomUsersList.sendAllUsers());
-        socket.broadcast.in(myRoom).emit('newUser', me.clean());
-        socket.in(myRoom).emit('error', me.clean());
+
+        d = _.indexOf(listCategory, user.room);
+
+        console.log(listCategory[d]);
+
+        room = app.Rooms.get(listCategory[d]);
+        roomUsersList = room.get('users');
+        me = roomUsersList.create(user);
+        roomShowsList = room.get('shows');
+
+        room.start();                       // Initialise la room de l'utilisateur si celle ci n'est pas encore initialisée
+        myRoom = me.get('room');            // Récupération du nom de la room
+        socket.join(myRoom);                // Join l'user a la room socket.IO
+        socket.in(myRoom).emit('sendUsers', roomUsersList.sendAllUsers());  // envoi au nouveau connecté tout les utilisateurs déjà connectés de la room
+        socket.broadcast.in(myRoom).emit('newUser', me.clean());    // Envoi à toute la room le nouveau user (cleané)
     });
-    socket.on('next', function(){room.nextShow()});
-    socket.on('submit', function(prop){
-        var response = {message:{title:{r:false},actors: {r:false},director:{r:false}},classement:{title:0,actors: 0,director:0}};
+    socket.on('submit', function(prop){ // Reception de la submission de l'user
+        var response = {message:{title:{r:false},actors: {r:false},director:{r:false}},classement:{title:0,actors: 0,director:0}}; // initialisation de la réponse
 
         app.compare = function(category, prop, bonus){
             var upperCat = capitaliseFirstLetter(category);
-                _.each(room.get('show').get(category), function(string){
-                if (levenshtein(string, prop)<=string.length/2) {    // Si la proposition du joueur est proche du titre du film
-                    if (me.get('classement'+upperCat)==0) { // Si l'utilisateur n'as pas déjà répondu 
-                        response.points = 5;
+            _.each(room.get('show').get(category), function(string){            // Pour le film actuellement séléctionné
+                if (levenshtein(string, prop)<=string.length/2) {               // Si la proposition du joueur est proche du titre du show
+                    if (me.get('classement'+upperCat)==0) {                     // Si l'utilisateur n'as pas déjà répondu 
+                        response.points = 5;                                    // Initialisation du nombre de points de base
                         if (room.get('show').get('classement' + upperCat)<=0) { // Si l'utilisateur est le premier a répondre au titre
-                            response.points = response.points + bonus;
+                            response.points = response.points + bonus;          // Bonus de points pour le premier
                         };
-                        room.get('show')['increment' + upperCat]();
-
-                        me['set'+upperCat](room.get('show').get('classement'+upperCat));
-                        response.classement[category] = room.get('show').get('classement'+upperCat);
-                        response.message[category].r = true;
-                        response.message[category].text = 'Tu as répondu en ' + response.classement[category];
+                        room.get('show')['increment' + upperCat]();             // Incrémente le nombre de personnes ayant répondu au show
+                        me['set'+upperCat](room.get('show').get('classement'+upperCat));    // Enregistre le classement dans l'utilisateur
+                        response.classement[category] = room.get('show').get('classement'+upperCat); // Enregistre le classement pour la réponse
+                        response.message[category].r = true;                    // L'utilisateur as eu une réponse valide
+                        response.message[category].text = 'Tu as répondu en ' + response.classement[category];  // Message pour l'utilisateur
                     }else{
-                        response.message[category].r = false;
-                        response.message[category].text = 'Déja repondu';
+                        response.message[category].r = false;                   // L'utilisateur as eu une réponse non valide
+                        response.message[category].text = 'Déja repondu';       // Message pour l'utilisateur
                     };
                 };
             });
         };
         app.compare('title', prop, 3);
-        app.compare('director', prop, 2);
+        app.compare('director', prop, 2);   // Lance compare pour les 3 sujets du jeu
         app.compare('actors', prop, 2)
-        me.contact(response);
+        me.contact(response);               // Envoi la réponse a l'utilisateur
     });
-    socket.on('disconnect', function () {
-        socket.broadcast.emit('disconnectUser', me.id);
-        roomUsersList.remove(me);
+    socket.on('disconnect', function () {   // Quand l'user se déco
+        socket.broadcast.emit('disconnectUser', me.id); // Dis a tout les autres que l'utilisateur se déco
+        roomUsersList.remove(me);           // Enlève l'user de la liste des gens dans la room
     });
 });
+
+
+server.get('/usernames/:room/:username', function(req, res){ // Savoir si quelqu'un du même pseudo est déjà dans la room
+    res.header("Access-Control-Allow-Origin", "*");
+    if (app.Rooms.get(req.params.room)) {
+        res.send(app.Rooms.get(req.params.room).get('users').getName(req.params.username));
+    }else{
+        res.send(false);
+    }
+});
+
 // Notre serverlication ecoute sur le port 8080
 server.listen(8080);
 console.log('Live Chat server running at http://localhost:8080/');
 
+
+
+// Tips
 function capitaliseFirstLetter(string){
     return string.charAt(0).toUpperCase() + string.slice(1);
 }
 
+// Calculateur de distance entre string
 function levenshtein(a, b){
     var i, j, cost, d = new Array(); 
     if(a.length==0){return b.length}
