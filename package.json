@@ -1,28 +1,30 @@
 {
   "name": "cinenode",
-  "version": "0.7.8",
-  "description": "readme",
+  "version": "0.8.0",
+  "description": "Serveur JS pour le site Cinenode",
   "main": "server.js",
   "dependencies": {
-    "express": "~2.5.0",
+    "backbone": "~0.9.10",
     "lodash": "~1.0.1",
-    "socket.io": "~0.9.13",
+    "express": "~2.5.11",
+    "mongodb": "~1.2.13",
     "request": "~2.12.0",
+    "socket.io": "~0.9.13",
     "underscore": "~1.4.4"
   },
   "devDependencies": {},
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "none",
     "start": "node server.js"
   },
   "repository": {
     "type": "git",
     "url": "https://github.com/onesime/cinenode.git"
   },
+  "keywords": [
+    "io"
+  ],
   "author": "Arnaud Pichon",
   "license": "BSD",
-  "readmeFilename": "README.md",
-  "keywords": [
-    "Cinenode"
-  ]
+  "readmeFilename": "README.md"
 }

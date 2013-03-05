@@ -1,3 +1,5 @@
-Trouver une solution pour que le serveur node ne fasse pas cracher le serveur PHP quand il demande le JSON
+Pour installer le nécéssaire au lancement de node :
 
-Trouver un algo de fou pour les titres
+```
+npm install
+```
