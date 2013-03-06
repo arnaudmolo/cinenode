@@ -10,12 +10,10 @@ var http    =   require('http'),
 
 MongoClient.connect("mongodb://molo:projet_pumir@ds047217.mongolab.com:47217/af_pumir-dolly-pr4ne", function(err, db){
     if(err) { return console.dir(err); }
-
     mongoUsers = db.collection('users');
     mongoUsers.update({username: 'arnaud-m'}, {$set:{superupdate:'waiwai'}}, {}, function(err, result){
         console.log(result);
     });
-    mongoUsers.findOne({username:'arnaud-m'}, function(err, item) {console.log(item);});
 });
 io = io.listen(server, {log: false});
 
@@ -94,7 +92,7 @@ app.User = Backbone.Model.extend({
         console.log('sauvegarde indivduelle');
         partie.points = this.get('points');
         partie.position =  this.collection.indexOf(this);   // GERER LE CLASSEMENT #TODO
-        console.log('La partie sauvegardée : ', partie);
+        // console.log('La partie sauvegardée : ', partie); 
         if (this.get('auth')) {
             mongoUsers.update({_id: this.get('_id')}, {$push:{games:partie}}, {}, function(err, result){
                 console.log('resultat de la sauvegarde : ', result);
@@ -235,17 +233,21 @@ app.Room = Backbone.Model.extend({
         users: {},              // Une room contient des utilisateurs
         shows: {},              // Une room contient différents films
         show: false,            // Défini le show qui est actuellement sujette au quizz
-        nb: 0                   // La position du show dans sa collection
+        nb: 0,                  // La position du show dans sa collection
+        started: false
     },
     reboot: function(){             // Redémare la room
         this.get('users').saveBdd(this.get('name'));
-        io.sockets.in(this.get('id')).emit('disconnect');   // Kick les utilisateurs
+        // io.sockets.in(this.get('id')).emit('disconnect');   // Kick les utilisateurs
+        this.get('users').disconnect();
         this.set('shows', new ShowList('', {cat:this.get('id')}));     // Régénère les show contenus dans la room
         this.set('show', false);     // Supprime show quizzé
         this.set('nb', 0);
+        this.set('started', 0);
     },
     start: function(){              // Initialise le jeu
-        if (!this.get('show')) {    // Si le show ne contient rien [CAD = room pas encore initialisée]
+        if (!this.get('show')&&this.get('started')===false) {    // Si le show ne contient rien [CAD = room pas encore initialisée]
+            this.set('started', true);
             model = this;           // Pointeur pour le setTimeout
             setTimeout(function(){  // Attendre 2 secondes pout lancer le premier show
                 model.nextShow();   // Lance la partie
@@ -349,7 +351,6 @@ io.sockets.on('connection', function (socket) {
     });
     socket.on('disconnect', function () {   // Quand l'user se déco
         try{
-
             socket.broadcast.emit('disconnectUser', me.id); // Dis a tout les autres que l'utilisateur se déco
             roomUsersList.remove(me);           // Enlève l'user de la liste des gens dans la room
         }catch(e){
