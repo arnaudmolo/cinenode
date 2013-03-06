@@ -1,7 +1,1 @@
-cinenode
-========
-Pour installer le nécéssaire au lancement de node :
-
-```
-npm install
-```
+Passez dans la branch Multithread !
