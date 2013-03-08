@@ -18,7 +18,7 @@ MongoClient.connect("mongodb://molo:projet_pumir@ds047217.mongolab.com:47217/af_
 });
 io = io.listen(server, {log: false});
 
-var listCategory = ['aventure', 'thriller', '1990s', '1980s', '2000s', 'animation', 'drame'];
+var listCategory = ['aventure', 'thriller', '1990s', '2000s', 'animation', 'drame'];
 
 //// Application Backbone //// 
 
