@@ -4,22 +4,23 @@ var http    =   require('http'),
     Backbone = require('backbone'),
     request = require('request'),
     server = express.createServer(),
-    MongoClient = require('mongodb').MongoClient,
+    Mongo = require('mongodb'),
+    MongoClient = Mongo.MongoClient,
+    BSON = Mongo.BSONPure,
     io = require('socket.io'),
     mongoUsers;
 
 MongoClient.connect("mongodb://molo:projet_pumir@ds047217.mongolab.com:47217/af_pumir-dolly-pr4ne", function(err, db){
     if(err) { return console.dir(err); }
     mongoUsers = db.collection('users');
-    mongoUsers.update({username: 'arnaud-m'}, {$set:{superupdate:'waiwai'}}, {}, function(err, result){
-        console.log(result);
-    });
+    mongoMovies = db.collection('movies');
+   // mongoMovies.findOne();
 });
 io = io.listen(server, {log: false});
 
-var listCategory = ['aventure', 'drame', 'thriller'];
+var listCategory = ['aventure', 'drame', 'thriller', '1990s'];
 
-//// Application Backbone ////
+//// Application Backbone //// 
 
 Backbone.sync = function(method, model, options){ // Réécrire le backbone.sync car aucune sync n'est nécéssaire
     switch (method) {case 'create':break;case 'update':break;case 'delete':break;case 'read':break;}
@@ -41,12 +42,12 @@ app.User = Backbone.Model.extend({
     },
     idAttribute: '_id',
     initialize: function(){
-        if (!this.get('_id')) {
+        console.log(this.get('_id'));
+        if (this.get('_id')==='') {
             this.save({_id: _.uniqueId()});
-            this.toggle();
+            this.set('auth', false);
         }
     }, //Génère un ID unique pour chaque utilisateur
-    toggle: function() {this.save({auth: !this.get('auth')});},
     addPoints: function(p){                     // Ajoute des points
         this.save({points: this.get('points') + p.points });
         this.collection.sort();
@@ -76,7 +77,6 @@ app.User = Backbone.Model.extend({
         }
         this.get('socket').emit('responseSubmit', response);
     },
-    auth: function(){return true;},             // Vérifie l'authentification
     clean: function(){
         return {_id: this.id, name: this.attributes.name, points: this.get('points'), room: this.attributes.room}; //Retourne l'utilisateur sans ses données sensibles
     },
@@ -88,16 +88,36 @@ app.User = Backbone.Model.extend({
         this.set('classementDirector', 0);
         this.set('classementActors', 0);
     },
-    saveBdd: function(partie){
-        console.log('sauvegarde indivduelle');
-        partie.points = this.get('points');
-        partie.position =  this.collection.indexOf(this);   // GERER LE CLASSEMENT #TODO
-        // console.log('La partie sauvegardée : ', partie); 
+    saveBdd: function(party){                   // Pour l'instant, party comporte : roomName, nbre_joueurs, position dans le classement
         if (this.get('auth')) {
-            mongoUsers.update({_id: this.get('_id')}, {$push:{games:partie}}, {}, function(err, result){
-                console.log('resultat de la sauvegarde : ', result);
-                console.log('resultat de la sauvegarde : ', err);
-            });
+            console.log('sauvegarde indivduelle');
+            party.points = this.get('points');
+            _id = new BSON.ObjectID(this.get('_id'));
+            console.log(party);
+            mongoUsers.findAndModify(
+                {_id: _id},
+                [['_id', 'asc']],
+                {
+                    $inc: {points: party.points, points_sem: party.points},
+                    $pop: {parties: -1},
+                    $push: {parties: party}
+                },
+                function(error, result){
+                    if (result.bestGame<party.points) {
+                        mongoUsers.findAndModify(
+                            {_id: _id},
+                            [['_id', 'asc']],
+                            {
+                                $set: {bestGame: party.points}
+                            },
+                            function(error, result){
+                                console.log("error 2:", error);
+                                console.log("result 2:", result);
+                            }
+                        );
+                    }
+                }
+            );
         }
     }
 });
@@ -144,8 +164,9 @@ var UserList = Backbone.Collection.extend({
         });
         return d;
     },
-    comparator: function(){
-        return this.get('points');
+    comparator: function(user){
+        console.log('comparator', user);
+        return -user.get('points');
     },
     reset: function(){                          // Reset tout les utilisateurs
         _.each(this.models, function(user){
@@ -161,10 +182,10 @@ var UserList = Backbone.Collection.extend({
     },
     saveBdd: function(roomName){
         col = this;
-        console.log('JE SUIS DANS LA SAUVEGARDE DE TOUT LDE MONDE BB');
+        console.log('UserList.saveBdd');
+        console.log(roomName);
         _.each(this.models, function(user){
-            console.log(user);
-            user.saveBdd({room: roomName, concurents: col.length});
+            user.saveBdd({room: roomName, nbre_joueurs: col.length, classement: 1});
         });
     }
 });
@@ -179,7 +200,7 @@ var ShowList = Backbone.Collection.extend({
         var model = this;
         request({                   // Get la page dédiée a cette application
             method: 'GET',
-            uri: 'http://127.0.0.1/Cinequizz/movies/category/'+a.cat,
+            uri: 'http://localhost/Cinequizz/movies/category/'+a.cat,
             multipart:[{
                     'content-type': 'application/json',
                     'charset': 'utf-8',
@@ -237,16 +258,17 @@ app.Room = Backbone.Model.extend({
         started: false
     },
     reboot: function(){             // Redémare la room
-        this.get('users').saveBdd(this.get('name'));
-        // io.sockets.in(this.get('id')).emit('disconnect');   // Kick les utilisateurs
-        this.get('users').disconnect();
+        this.get('users').saveBdd(this.get('id'));
+        io.sockets.in(this.get('id')).emit('kick');   // Kick les utilisateurs
+        // this.get('users').disconnect();
+        this.set('users', new UserList());
         this.set('shows', new ShowList('', {cat:this.get('id')}));     // Régénère les show contenus dans la room
         this.set('show', false);     // Supprime show quizzé
         this.set('nb', 0);
-        this.set('started', 0);
+        this.set('started', false);
     },
     start: function(){              // Initialise le jeu
-        if (!this.get('show')&&this.get('started')===false) {    // Si le show ne contient rien [CAD = room pas encore initialisée]
+        if (this.get('started')===false) {    // Si le show ne contient rien [CAD = room pas encore initialisée]
             this.set('started', true);
             model = this;           // Pointeur pour le setTimeout
             setTimeout(function(){  // Attendre 2 secondes pout lancer le premier show
