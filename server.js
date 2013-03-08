@@ -42,7 +42,6 @@ app.User = Backbone.Model.extend({
     },
     idAttribute: '_id',
     initialize: function(){
-        console.log(this.get('_id'));
         if (this.get('_id')==='') {
             this.save({_id: _.uniqueId()});
             this.set('auth', false);
@@ -90,10 +89,8 @@ app.User = Backbone.Model.extend({
     },
     saveBdd: function(party){                   // Pour l'instant, party comporte : roomName, nbre_joueurs, position dans le classement
         if (this.get('auth')) {
-            console.log('sauvegarde indivduelle');
             party.points = this.get('points');
             _id = new BSON.ObjectID(this.get('_id'));
-            console.log(party);
             mongoUsers.findAndModify(
                 {_id: _id},
                 [['_id', 'asc']],
@@ -111,8 +108,6 @@ app.User = Backbone.Model.extend({
                                 $set: {bestGame: party.points}
                             },
                             function(error, result){
-                                console.log("error 2:", error);
-                                console.log("result 2:", result);
                             }
                         );
                     }
@@ -165,7 +160,6 @@ var UserList = Backbone.Collection.extend({
         return d;
     },
     comparator: function(user){
-        console.log('comparator', user);
         return -user.get('points');
     },
     reset: function(){                          // Reset tout les utilisateurs
@@ -182,8 +176,6 @@ var UserList = Backbone.Collection.extend({
     },
     saveBdd: function(roomName){
         col = this;
-        console.log('UserList.saveBdd');
-        console.log(roomName);
         _.each(this.models, function(user){
             user.saveBdd({room: roomName, nbre_joueurs: col.length, classement: 1});
         });
