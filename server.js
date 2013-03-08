@@ -368,7 +368,7 @@ io.sockets.on('connection', function (socket) {
             socket.broadcast.emit('disconnectUser', me.id); // Dis a tout les autres que l'utilisateur se déco
             roomUsersList.remove(me);           // Enlève l'user de la liste des gens dans la room
         }catch(e){
-            console.log('UNE ERREUR EST SURVENUE, C\'EST CHAUD');
+            console.log('UNE ERREUR EST SURVENUE, on recommence');
         }
     });
 });
